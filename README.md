@@ -7,9 +7,8 @@
 
 
 
-<img width="1432" height="1278" alt="screenshot-20250905-191815" src="https://github.com/user-attachments/assets/ded41a1a-6352-4ffc-ab3f-e268172c5473" />
+<img width="1251" height="2051" alt="Group 336" src="https://github.com/user-attachments/assets/6b1fc8a2-e86b-403b-be21-97eb2ff65034" />
 
-<img width="1251" height="873" alt="screenshot-20250906-145245" src="https://github.com/user-attachments/assets/99d433e4-8424-42fc-aac5-791ce1aa8186" />
 
 
 <img width="1556" height="1086" alt="screenshot-20250905-191422" src="https://github.com/user-attachments/assets/23953d15-8ebb-4574-bbc9-74b44b79f341" />
