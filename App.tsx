@@ -1,5 +1,6 @@
 
-import React, { useState, useCallback } from 'react';
+
+import React, { useState, useCallback, useEffect } from 'react';
 import { TRANSFORMATIONS } from './constants';
 import { editImage } from './services/geminiService';
 import type { GeneratedContent, Transformation } from './types';
@@ -8,22 +9,62 @@ import ResultDisplay from './components/ResultDisplay';
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorMessage from './components/ErrorMessage';
 import ImageEditorCanvas from './components/ImageEditorCanvas';
-import { dataUrlToFile, embedWatermark } from './utils/fileUtils';
+// Fix: Removed unused and non-existent 'fileToDataUrl' import.
+import { dataUrlToFile, embedWatermark, loadImage, resizeImageToMatch, downloadImage } from './utils/fileUtils';
 import ImagePreviewModal from './components/ImagePreviewModal';
+import MultiImageUploader from './components/MultiImageUploader';
+import HistoryPanel from './components/HistoryPanel';
 
 type ActiveTool = 'mask' | 'none';
 
 const App: React.FC = () => {
+  const [transformations, setTransformations] = useState<Transformation[]>(() => {
+    try {
+      const savedOrder = localStorage.getItem('transformationOrder');
+      if (savedOrder) {
+        const orderedTitles = JSON.parse(savedOrder) as string[];
+        const transformationMap = new Map(TRANSFORMATIONS.map(t => [t.title, t]));
+        
+        const orderedTransformations = orderedTitles
+          .map(title => transformationMap.get(title))
+          .filter((t): t is Transformation => !!t);
+
+        const savedTitlesSet = new Set(orderedTitles);
+        const newTransformations = TRANSFORMATIONS.filter(t => !savedTitlesSet.has(t.title));
+        
+        return [...orderedTransformations, ...newTransformations];
+      }
+    } catch (e) {
+      console.error("Failed to load or parse transformation order from localStorage", e);
+    }
+    return TRANSFORMATIONS;
+  });
+
   const [selectedTransformation, setSelectedTransformation] = useState<Transformation | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [primaryImageUrl, setPrimaryImageUrl] = useState<string | null>(null);
+  const [primaryFile, setPrimaryFile] = useState<File | null>(null);
+  const [secondaryImageUrl, setSecondaryImageUrl] = useState<string | null>(null);
+  const [secondaryFile, setSecondaryFile] = useState<File | null>(null);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [maskDataUrl, setMaskDataUrl] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [activeTool, setActiveTool] = useState<ActiveTool>('none');
+  const [history, setHistory] = useState<GeneratedContent[]>([]);
+  const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState<boolean>(false);
+  
+  useEffect(() => {
+    try {
+      const orderToSave = transformations.map(t => t.title);
+      localStorage.setItem('transformationOrder', JSON.stringify(orderToSave));
+    } catch (e) {
+      console.error("Failed to save transformation order to localStorage", e);
+    }
+  }, [transformations]);
+
 
   const handleSelectTransformation = (transformation: Transformation) => {
     setSelectedTransformation(transformation);
@@ -34,27 +75,43 @@ const App: React.FC = () => {
     }
   };
 
-  const handleImageSelect = useCallback((file: File, dataUrl: string) => {
-    setSelectedFile(file);
-    setImagePreviewUrl(dataUrl);
+  const handlePrimaryImageSelect = useCallback((file: File, dataUrl: string) => {
+    setPrimaryFile(file);
+    setPrimaryImageUrl(dataUrl);
     setGeneratedContent(null);
     setError(null);
     setMaskDataUrl(null);
     setActiveTool('none');
   }, []);
+
+  const handleSecondaryImageSelect = useCallback((file: File, dataUrl: string) => {
+    setSecondaryFile(file);
+    setSecondaryImageUrl(dataUrl);
+    setGeneratedContent(null);
+    setError(null);
+  }, []);
   
-  const handleClearImage = () => {
-    setImagePreviewUrl(null);
-    setSelectedFile(null);
+  const handleClearPrimaryImage = () => {
+    setPrimaryImageUrl(null);
+    setPrimaryFile(null);
     setGeneratedContent(null);
     setError(null);
     setMaskDataUrl(null);
     setActiveTool('none');
   };
+  
+  const handleClearSecondaryImage = () => {
+    setSecondaryImageUrl(null);
+    setSecondaryFile(null);
+  };
 
   const handleGenerate = useCallback(async () => {
-    if (!imagePreviewUrl || !selectedTransformation) {
-        setError("Please upload an image and select an effect first.");
+    if (!primaryImageUrl || !selectedTransformation) {
+        setError("Please upload an image and select an effect.");
+        return;
+    }
+    if (selectedTransformation.isMultiImage && !secondaryImageUrl) {
+        setError("Please upload both required images.");
         return;
     }
     
@@ -67,50 +124,130 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setGeneratedContent(null);
+    setLoadingMessage('');
 
     try {
-      const mimeType = imagePreviewUrl.split(';')[0].split(':')[1] ?? 'image/png';
-      const base64 = imagePreviewUrl.split(',')[1];
-      const maskBase64 = maskDataUrl ? maskDataUrl.split(',')[1] : null;
+        const primaryMimeType = primaryImageUrl!.split(';')[0].split(':')[1] ?? 'image/png';
+        const primaryBase64 = primaryImageUrl!.split(',')[1];
+        const maskBase64 = maskDataUrl ? maskDataUrl.split(',')[1] : null;
 
-      const result = await editImage(
-        base64, 
-        mimeType, 
-        promptToUse,
-        maskBase64
-      );
+        if (selectedTransformation.isTwoStep) {
+            // Step 1: Generate line art (using only the primary image)
+            setLoadingMessage('Step 1: Creating line art...');
+            const stepOneResult = await editImage(
+                primaryBase64,
+                primaryMimeType,
+                promptToUse, // First prompt
+                null, // No mask for step 1
+                null  // No secondary image for step 1
+            );
 
-      if (result.imageUrl) {
-        // Embed invisible watermark
-        result.imageUrl = await embedWatermark(result.imageUrl, "Nano Bananary｜ZHO");
-      }
+            if (!stepOneResult.imageUrl) {
+                throw new Error("Step 1 (line art) failed to generate an image.");
+            }
 
-      setGeneratedContent(result);
+            // Step 2: Color the line art using the palette
+            setLoadingMessage('Step 2: Applying color palette...');
+            const stepOneImageBase64 = stepOneResult.imageUrl.split(',')[1];
+            const stepOneImageMimeType = stepOneResult.imageUrl.split(';')[0].split(':')[1] ?? 'image/png';
+
+            let secondaryImagePayload = null;
+            if (selectedTransformation.isMultiImage && secondaryImageUrl && primaryImageUrl) {
+                // Load primary image to get its dimensions
+                const primaryImage = await loadImage(primaryImageUrl);
+                // Resize color palette to match primary image's aspect ratio
+                const resizedSecondaryImageUrl = await resizeImageToMatch(secondaryImageUrl, primaryImage);
+
+                const secondaryMimeType = resizedSecondaryImageUrl.split(';')[0].split(':')[1] ?? 'image/png';
+                const secondaryBase64 = resizedSecondaryImageUrl.split(',')[1];
+                secondaryImagePayload = { base64: secondaryBase64, mimeType: secondaryMimeType };
+            }
+
+            const stepTwoResult = await editImage(
+                stepOneImageBase64,
+                stepOneImageMimeType,
+                selectedTransformation.stepTwoPrompt!, // Second prompt
+                null, // No mask for step 2
+                secondaryImagePayload // Use the RESIZED color palette here
+            );
+            
+            if (stepTwoResult.imageUrl) {
+                stepTwoResult.imageUrl = await embedWatermark(stepTwoResult.imageUrl, "Nano Bananary｜ZHO");
+            }
+
+            const finalResult = {
+                imageUrl: stepTwoResult.imageUrl,
+                text: stepTwoResult.text,
+                secondaryImageUrl: stepOneResult.imageUrl, // Store intermediate result
+            };
+            setGeneratedContent(finalResult);
+            setHistory(prev => [finalResult, ...prev]);
+
+        } else { // Single-step generation
+             let secondaryImagePayload = null;
+            if (selectedTransformation.isMultiImage && secondaryImageUrl) {
+                const secondaryMimeType = secondaryImageUrl.split(';')[0].split(':')[1] ?? 'image/png';
+                const secondaryBase64 = secondaryImageUrl.split(',')[1];
+                secondaryImagePayload = { base64: secondaryBase64, mimeType: secondaryMimeType };
+            }
+            setLoadingMessage('Generating your masterpiece...');
+            const result = await editImage(
+                primaryBase64, 
+                primaryMimeType, 
+                promptToUse,
+                maskBase64,
+                secondaryImagePayload
+            );
+
+            if (result.imageUrl) {
+                result.imageUrl = await embedWatermark(result.imageUrl, "Nano Bananary｜ZHO");
+            }
+
+            setGeneratedContent(result);
+            setHistory(prev => [result, ...prev]);
+        }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "An unknown error occurred.");
     } finally {
       setIsLoading(false);
+      setLoadingMessage('');
     }
-  }, [imagePreviewUrl, selectedTransformation, maskDataUrl, customPrompt]);
+  }, [primaryImageUrl, secondaryImageUrl, selectedTransformation, maskDataUrl, customPrompt, transformations]);
 
-  const handleUseResultAsInput = useCallback(async () => {
-    if (!generatedContent?.imageUrl) return;
+
+  const handleUseImageAsInput = useCallback(async (imageUrl: string) => {
+    if (!imageUrl) return;
 
     try {
-      const newFile = await dataUrlToFile(generatedContent.imageUrl, `edited-${Date.now()}.png`);
-      setSelectedFile(newFile);
-      setImagePreviewUrl(generatedContent.imageUrl);
+      const newFile = await dataUrlToFile(imageUrl, `edited-${Date.now()}.png`);
+      setPrimaryFile(newFile);
+      setPrimaryImageUrl(imageUrl);
       setGeneratedContent(null);
       setError(null);
       setMaskDataUrl(null);
       setActiveTool('none');
-      setSelectedTransformation(null); // Go back to effect selection
+      setSecondaryFile(null);
+      setSecondaryImageUrl(null);
+      setSelectedTransformation(null); 
     } catch (err) {
       console.error("Failed to use image as input:", err);
       setError("Could not use the generated image as a new input.");
     }
-  }, [generatedContent]);
+  }, []);
+  
+  const toggleHistoryPanel = () => setIsHistoryPanelOpen(prev => !prev);
+  
+  const handleUseHistoryImageAsInput = (imageUrl: string) => {
+      handleUseImageAsInput(imageUrl);
+      setIsHistoryPanelOpen(false);
+  };
+  
+  const handleDownloadFromHistory = (imageUrl: string, type: 'line-art' | 'final-result' | 'single-result') => {
+      const fileExtension = imageUrl.split(';')[0].split('/')[1] || 'png';
+      const filename = `${type}-${Date.now()}.${fileExtension}`;
+      downloadImage(imageUrl, filename);
+  };
 
   const handleBackToSelection = () => {
     setSelectedTransformation(null);
@@ -118,14 +255,17 @@ const App: React.FC = () => {
 
   const handleResetApp = () => {
     setSelectedTransformation(null);
-    setImagePreviewUrl(null);
-    setSelectedFile(null);
+    setPrimaryImageUrl(null);
+    setPrimaryFile(null);
+    setSecondaryImageUrl(null);
+    setSecondaryFile(null);
     setGeneratedContent(null);
     setError(null);
     setIsLoading(false);
     setMaskDataUrl(null);
     setCustomPrompt('');
     setActiveTool('none');
+    // Don't clear history on reset
   };
 
   const handleOpenPreview = (url: string) => setPreviewImageUrl(url);
@@ -134,8 +274,12 @@ const App: React.FC = () => {
   const toggleMaskTool = () => {
     setActiveTool(current => (current === 'mask' ? 'none' : 'mask'));
   };
+  
+  const isCustomPromptEmpty = selectedTransformation?.prompt === 'CUSTOM' && !customPrompt.trim();
+  const isSingleImageReady = !selectedTransformation?.isMultiImage && primaryImageUrl;
+  const isMultiImageReady = selectedTransformation?.isMultiImage && primaryImageUrl && secondaryImageUrl;
+  const isGenerateDisabled = isLoading || isCustomPromptEmpty || (!isSingleImageReady && !isMultiImageReady);
 
-  const isGenerateDisabled = !imagePreviewUrl || isLoading || (selectedTransformation?.prompt === 'CUSTOM' && !customPrompt.trim());
 
   return (
     <div className="min-h-screen bg-black text-gray-300 font-sans">
@@ -144,15 +288,26 @@ const App: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-yellow-400 cursor-pointer" onClick={handleResetApp}>
             🍌 Nano Bananary｜ZHO
           </h1>
+          <button
+            onClick={toggleHistoryPanel}
+            className="flex items-center gap-2 py-2 px-3 text-sm font-semibold text-gray-200 bg-gray-800/50 rounded-md hover:bg-gray-700/50 transition-colors duration-200"
+            aria-label="Toggle generation history"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+            </svg>
+            <span>History</span>
+          </button>
         </div>
       </header>
 
       <main>
         {!selectedTransformation ? (
           <TransformationSelector 
-            transformations={TRANSFORMATIONS} 
+            transformations={transformations} 
             onSelect={handleSelectTransformation} 
-            hasPreviousResult={!!imagePreviewUrl}
+            hasPreviousResult={!!primaryImageUrl}
+            onOrderChange={setTransformations}
           />
         ) : (
           <div className="container mx-auto p-4 md:p-8 animate-fade-in">
@@ -186,19 +341,34 @@ const App: React.FC = () => {
                             className="w-full mt-2 p-3 bg-gray-900 border border-white/20 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors placeholder-gray-500"
                         />
                     ) : (
-                       <p className="text-gray-400">{selectedTransformation.prompt}</p>
+                       <p className="text-gray-400">{selectedTransformation.description}</p>
                     )}
                   </div>
                   
-                  <ImageEditorCanvas
-                    onImageSelect={handleImageSelect}
-                    initialImageUrl={imagePreviewUrl}
-                    onMaskChange={setMaskDataUrl}
-                    onClearImage={handleClearImage}
-                    isMaskToolActive={activeTool === 'mask'}
-                  />
+                  {selectedTransformation.isMultiImage ? (
+                    <MultiImageUploader
+                      onPrimarySelect={handlePrimaryImageSelect}
+                      onSecondarySelect={handleSecondaryImageSelect}
+                      primaryImageUrl={primaryImageUrl}
+                      secondaryImageUrl={secondaryImageUrl}
+                      onClearPrimary={handleClearPrimaryImage}
+                      onClearSecondary={handleClearSecondaryImage}
+                      primaryTitle={selectedTransformation.primaryUploaderTitle}
+                      primaryDescription={selectedTransformation.primaryUploaderDescription}
+                      secondaryTitle={selectedTransformation.secondaryUploaderTitle}
+                      secondaryDescription={selectedTransformation.secondaryUploaderDescription}
+                    />
+                  ) : (
+                    <ImageEditorCanvas
+                      onImageSelect={handlePrimaryImageSelect}
+                      initialImageUrl={primaryImageUrl}
+                      onMaskChange={setMaskDataUrl}
+                      onClearImage={handleClearPrimaryImage}
+                      isMaskToolActive={activeTool === 'mask'}
+                    />
+                  )}
 
-                  {imagePreviewUrl && (
+                  {primaryImageUrl && !selectedTransformation.isMultiImage && (
                     <div className="mt-4">
                         <button
                             onClick={toggleMaskTool}
@@ -240,14 +410,14 @@ const App: React.FC = () => {
               {/* Output Column */}
               <div className="flex flex-col p-6 bg-gray-950/60 backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl shadow-black/20">
                 <h2 className="text-xl font-semibold mb-4 text-orange-500 self-start">Result</h2>
-                {isLoading && <div className="flex-grow flex items-center justify-center"><LoadingSpinner /></div>}
+                {isLoading && <div className="flex-grow flex items-center justify-center"><LoadingSpinner message={loadingMessage} /></div>}
                 {error && <div className="flex-grow flex items-center justify-center w-full"><ErrorMessage message={error} /></div>}
                 {!isLoading && !error && generatedContent && (
                     <ResultDisplay 
                         content={generatedContent} 
-                        onUseAsInput={handleUseResultAsInput}
+                        onUseImageAsInput={handleUseImageAsInput}
                         onImageClick={handleOpenPreview}
-                        originalImageUrl={imagePreviewUrl}
+                        originalImageUrl={primaryImageUrl}
                     />
                 )}
                 {!isLoading && !error && !generatedContent && (
@@ -264,6 +434,13 @@ const App: React.FC = () => {
         )}
       </main>
       <ImagePreviewModal imageUrl={previewImageUrl} onClose={handleClosePreview} />
+      <HistoryPanel
+        isOpen={isHistoryPanelOpen}
+        onClose={toggleHistoryPanel}
+        history={history}
+        onUseImage={handleUseHistoryImageAsInput}
+        onDownload={handleDownloadFromHistory}
+      />
     </div>
   );
 };

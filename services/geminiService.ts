@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { GeneratedContent } from '../types';
 
@@ -11,7 +12,8 @@ export async function editImage(
     base64ImageData: string, 
     mimeType: string, 
     prompt: string,
-    maskBase64: string | null
+    maskBase64: string | null,
+    secondaryImage: { base64: string; mimeType: string } | null
 ): Promise<GeneratedContent> {
   try {
     let fullPrompt = prompt;
@@ -24,6 +26,7 @@ export async function editImage(
       },
     ];
 
+    // The mask should immediately follow the image it applies to.
     if (maskBase64) {
       parts.push({
         inlineData: {
@@ -32,6 +35,15 @@ export async function editImage(
         },
       });
       fullPrompt = `Apply the following instruction only to the masked area of the image: "${prompt}". Preserve the unmasked area.`;
+    }
+    
+    if (secondaryImage) {
+        parts.push({
+            inlineData: {
+                data: secondaryImage.base64,
+                mimeType: secondaryImage.mimeType,
+            },
+        });
     }
 
     parts.push({ text: fullPrompt });
@@ -78,7 +90,24 @@ export async function editImage(
   } catch (error) {
     console.error("Error calling Gemini API:", error);
     if (error instanceof Error) {
-        throw new Error(`Failed to generate image: ${error.message}`);
+        let errorMessage = error.message;
+        try {
+            // The error message from the SDK might be a JSON string.
+            const parsedError = JSON.parse(errorMessage);
+            if (parsedError.error && parsedError.error.message) {
+                // Add a user-friendly message for common errors.
+                if (parsedError.error.status === 'RESOURCE_EXHAUSTED') {
+                    errorMessage = "You've likely exceeded the request limit. Please wait a moment before trying again.";
+                } else if (parsedError.error.code === 500 || parsedError.error.status === 'UNKNOWN') {
+                    errorMessage = "An unexpected server error occurred. This might be a temporary issue. Please try again in a few moments.";
+                } else {
+                    errorMessage = parsedError.error.message;
+                }
+            }
+        } catch (e) {
+            // Not a JSON string, use the original message.
+        }
+        throw new Error(errorMessage);
     }
     throw new Error("An unknown error occurred while communicating with the API.");
   }
