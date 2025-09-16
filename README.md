@@ -17,7 +17,14 @@
 </div>
 
 
-## 无需提示词，丝滑衔接
+## 新增 中文界面 + 浅色主题！
+
+
+<img width="1311" height="738" alt="screenshot-20250916-153520" src="https://github.com/user-attachments/assets/476241e6-b7bf-4f66-81c5-fdaaa0695bcd" />
+
+
+
+## 1）无需提示词，丝滑衔接
 
 
 
@@ -36,7 +43,7 @@ https://github.com/user-attachments/assets/39976fe1-fafe-4ecf-94b2-5f6053f92c7f
 4⃣直接发送到新玩法中继续
 
 
-## 核心功能：每次输出都能直接作为输入进行下一次编辑/生成
+## 2）核心功能：每次输出都能直接作为输入进行下一次编辑/生成
 
 
 
@@ -77,6 +84,11 @@ Use in AI Studio: https://ai.studio/apps/drive/1JknFrFFdiOm7FIA8MLOJa_vtJN2g24c1
 
 ## 更新日志
 
+- 20250916
+
+  新增 中文界面 + 浅色主题
+
+
 - 20250906
 
   功能更新：增加历史记录功能，方便直接使用已生成的图像作为输入
@@ -99,7 +111,7 @@ Use in AI Studio: https://ai.studio/apps/drive/1JknFrFFdiOm7FIA8MLOJa_vtJN2g24c1
   4⃣自定义提示词模块：方便个性化生成
 
 
-- 20250828
+- 20250095
   
   创建项目
   
