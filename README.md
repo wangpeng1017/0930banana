@@ -17,10 +17,24 @@
 </div>
 
 
-## 新增 中文界面 + 浅色主题！
+## 🆕 新增 视频生成 + 中文界面 + 浅色主题！
 
+
+### 1）中文界面 + 浅色主题 一键切换！
 
 <img width="1311" height="738" alt="screenshot-20250916-153520" src="https://github.com/user-attachments/assets/476241e6-b7bf-4f66-81c5-fdaaa0695bcd" />
+
+
+### 2）上线视频生成功能！所有玩法一键转化为视频，纵享丝滑！
+
+
+https://github.com/user-attachments/assets/4cce75d2-9783-41a4-94cc-2837c365d5a8
+
+
+
+
+https://github.com/user-attachments/assets/be93114f-3bc4-4ddf-947c-4694268444e4
+
 
 
 
@@ -86,7 +100,7 @@ Use in AI Studio: https://ai.studio/apps/drive/1JknFrFFdiOm7FIA8MLOJa_vtJN2g24c1
 
 - 20250916
 
-  新增 中文界面 + 浅色主题
+  新增 视频生成 + 中文界面 + 浅色主题
 
 
 - 20250906
