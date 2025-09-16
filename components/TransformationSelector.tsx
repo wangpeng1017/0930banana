@@ -1,7 +1,6 @@
-
-
 import React, { useRef, useState } from 'react';
 import type { Transformation } from '../types';
+import { useTranslation } from '../i18n/context';
 
 interface TransformationSelectorProps {
   transformations: Transformation[];
@@ -11,6 +10,7 @@ interface TransformationSelectorProps {
 }
 
 const TransformationSelector: React.FC<TransformationSelectorProps> = ({ transformations, onSelect, hasPreviousResult, onOrderChange }) => {
+  const { t } = useTranslation();
   const dragItemIndex = useRef<number | null>(null);
   const dragOverItemIndex = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -49,27 +49,27 @@ const TransformationSelector: React.FC<TransformationSelectorProps> = ({ transfo
 
   return (
     <div className="container mx-auto p-4 md:p-8 animate-fade-in">
-      <h2 className="text-3xl font-bold text-center mb-4 text-orange-500">Let's Go Bananas!</h2>
-      <p className="text-lg text-center text-gray-400 mb-8 max-w-2xl mx-auto">
+      <h2 className="text-3xl font-bold text-center mb-4 text-[var(--accent-primary)]">{t('transformationSelector.title')}</h2>
+      <p className="text-lg text-center text-[var(--text-secondary)] mb-8 max-w-2xl mx-auto">
         {hasPreviousResult 
-          ? "That was fun! Your last creation is ready for another round. Select a new effect to keep the chain going."
-          : "Ready to remix your reality? Pick an effect to start the magic. You can also drag and drop to reorder your favorite effects."
+          ? t('transformationSelector.descriptionWithResult')
+          : t('transformationSelector.description')
         }
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {transformations.map((trans, index) => (
           <button
-            key={trans.title}
+            key={trans.key}
             draggable
             onDragStart={(e) => handleDragStart(e, index)}
             onDragEnter={(e) => handleDragEnter(e, index)}
             onDragEnd={handleDragEnd}
             onDragOver={handleDragOver}
             onClick={() => onSelect(trans)}
-            className={`group flex flex-col items-center justify-center text-center p-4 aspect-square bg-gray-950 rounded-xl border border-white/10 hover:border-orange-500 transition-all duration-200 ease-in-out transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-orange-500 cursor-grab active:cursor-grabbing ${dragging ? 'border-dashed' : ''}`}
+            className={`group flex flex-col items-center justify-center text-center p-4 aspect-square bg-[var(--bg-card)] rounded-xl border border-[var(--border-primary)] hover:border-[var(--accent-primary)] transition-all duration-200 ease-in-out transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] focus:ring-[var(--accent-primary)] cursor-grab active:cursor-grabbing ${dragging ? 'border-dashed' : ''}`}
           >
             <span className="text-4xl mb-2 transition-transform duration-200 group-hover:scale-110">{trans.emoji}</span>
-            <span className="font-semibold text-sm text-gray-200">{trans.title}</span>
+            <span className="font-semibold text-sm text-[var(--text-primary)]">{t(trans.titleKey)}</span>
           </button>
         ))}
       </div>

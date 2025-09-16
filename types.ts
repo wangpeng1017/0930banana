@@ -1,9 +1,11 @@
 
+
 export interface Transformation {
-  title: string;
+  key: string;
+  titleKey: string;
   prompt: string;
   emoji: string;
-  description: string;
+  descriptionKey: string;
   isMultiImage?: boolean;
   isTwoStep?: boolean;
   stepTwoPrompt?: string;

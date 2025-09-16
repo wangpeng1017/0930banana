@@ -1,7 +1,8 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { LanguageProvider } from './i18n/context';
+import { ThemeProvider } from './theme/context';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -11,6 +12,10 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <LanguageProvider>
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    </LanguageProvider>
   </React.StrictMode>
 );

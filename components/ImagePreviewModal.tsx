@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { useTranslation } from '../i18n/context';
 
 interface ImagePreviewModalProps {
   imageUrl: string | null;
@@ -7,6 +7,7 @@ interface ImagePreviewModalProps {
 }
 
 const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ imageUrl, onClose }) => {
+  const { t } = useTranslation();
   if (!imageUrl) {
     return null;
   }
@@ -50,12 +51,12 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ imageUrl, onClose
        <div className="flex-shrink-0 mt-4">
         <button
           onClick={handleDownload}
-          className="py-2 px-5 bg-gray-800 text-gray-200 font-semibold rounded-lg shadow-sm hover:bg-gray-700 transition-all duration-200 flex items-center justify-center gap-2"
+          className="py-2 px-5 bg-[rgba(107,114,128,0.2)] text-[var(--text-primary)] font-semibold rounded-lg shadow-sm hover:bg-[rgba(107,114,128,0.4)] transition-all duration-200 flex items-center justify-center gap-2"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
-          <span>Download Image</span>
+          <span>{t('resultDisplay.actions.download')}</span>
         </button>
       </div>
       <style>

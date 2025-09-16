@@ -1,5 +1,5 @@
-
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { useTranslation } from '../i18n/context';
 
 interface ImageEditorCanvasProps {
   onImageSelect: (file: File, dataUrl: string) => void;
@@ -10,7 +10,7 @@ interface ImageEditorCanvasProps {
 }
 
 const ImageEditorCanvas: React.FC<ImageEditorCanvasProps> = ({ onImageSelect, initialImageUrl, onMaskChange, onClearImage, isMaskToolActive }) => {
-  
+  const { t } = useTranslation();
   const imageCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -147,7 +147,8 @@ const ImageEditorCanvas: React.FC<ImageEditorCanvasProps> = ({ onImageSelect, in
     const { maskCtx } = getCanvasContexts();
     if (maskCtx) {
       maskCtx.beginPath();
-      maskCtx.strokeStyle = 'rgba(249, 115, 22, 0.7)';
+      const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim();
+      maskCtx.strokeStyle = `${accentColor}b3`; // 70% opacity
       maskCtx.lineWidth = brushSize;
       maskCtx.lineCap = 'round';
       maskCtx.lineJoin = 'round';
@@ -185,14 +186,14 @@ const ImageEditorCanvas: React.FC<ImageEditorCanvasProps> = ({ onImageSelect, in
         <div
             ref={containerRef}
             onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}
-            className={`relative w-full aspect-square bg-black rounded-lg flex items-center justify-center transition-colors duration-200 select-none ${
-            isDragging ? 'outline-dashed outline-2 outline-orange-500 bg-orange-500/10' : ''
-            } ${initialImageUrl ? 'p-0' : 'p-4 border-2 border-dashed border-white/20'}`}
+            className={`relative w-full aspect-square bg-[var(--bg-secondary)] rounded-lg flex items-center justify-center transition-colors duration-200 select-none ${
+            isDragging ? 'outline-dashed outline-2 outline-[var(--accent-primary)] bg-[rgba(249,115,22,0.1)]' : ''
+            } ${initialImageUrl ? 'p-0' : 'p-4 border-2 border-dashed border-[var(--border-primary)]'}`}
         >
             {!initialImageUrl ? (
-                <label htmlFor="file-upload" className="flex flex-col items-center justify-center text-gray-500 cursor-pointer w-full h-full">
+                <label htmlFor="file-upload" className="flex flex-col items-center justify-center text-[var(--text-tertiary)] cursor-pointer w-full h-full">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.158 0h.008v.008h-.008V8.25z" /></svg>
-                    <p className="mb-2 text-sm"><span className="font-semibold">Click to upload</span> or drag and drop</p>
+                    <p className="mb-2 text-sm"><span className="font-semibold text-[var(--text-secondary)]">{t('imageEditor.upload')}</span> {t('imageEditor.dragAndDrop')}</p>
                     <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept="image/*" />
                 </label>
             ) : (
@@ -212,15 +213,15 @@ const ImageEditorCanvas: React.FC<ImageEditorCanvasProps> = ({ onImageSelect, in
             )}
         </div>
         {initialImageUrl && isMaskToolActive && (
-            <div className="p-3 bg-black/60 backdrop-blur-md rounded-lg flex flex-col gap-4 border border-white/10 animate-fade-in-fast">
-                <p className="text-xs text-gray-400 -mb-2">Draw on the image to create a mask for localized edits.</p>
+            <div className="p-3 bg-black/60 backdrop-blur-md rounded-lg flex flex-col gap-4 border border-[var(--border-primary)] animate-fade-in-fast">
+                <p className="text-xs text-[var(--text-secondary)] -mb-2">{t('imageEditor.maskPanelInfo')}</p>
                 <div className="flex items-center gap-4">
-                    <label htmlFor="brush-size" className="text-sm font-medium text-gray-200 whitespace-nowrap">Brush Size</label>
-                    <input id="brush-size" type="range" min="5" max="100" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+                    <label htmlFor="brush-size" className="text-sm font-medium text-[var(--text-primary)] whitespace-nowrap">{t('imageEditor.brushSize')}</label>
+                    <input id="brush-size" type="range" min="5" max="100" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full h-2 bg-[var(--text-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-primary)]" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                    <button onClick={handleUndo} disabled={history.length === 0} className="px-4 py-2 text-sm font-semibold text-gray-200 bg-gray-800 rounded-md hover:bg-gray-700 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors">Undo</button>
-                    <button onClick={clearMask} disabled={history.length === 0} className="px-4 py-2 text-sm font-semibold text-gray-200 bg-gray-800 rounded-md hover:bg-gray-700 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors">Clear Mask</button>
+                    <button onClick={handleUndo} disabled={history.length === 0} className="px-4 py-2 text-sm font-semibold text-[var(--text-primary)] bg-[rgba(107,114,128,0.2)] rounded-md hover:bg-[rgba(107,114,128,0.4)] disabled:bg-[var(--bg-disabled)] disabled:text-[var(--text-disabled)] disabled:cursor-not-allowed transition-colors">{t('imageEditor.undo')}</button>
+                    <button onClick={clearMask} disabled={history.length === 0} className="px-4 py-2 text-sm font-semibold text-[var(--text-primary)] bg-[rgba(107,114,128,0.2)] rounded-md hover:bg-[rgba(107,114,128,0.4)] disabled:bg-[var(--bg-disabled)] disabled:text-[var(--text-disabled)] disabled:cursor-not-allowed transition-colors">{t('imageEditor.clearMask')}</button>
                 </div>
             </div>
         )}
