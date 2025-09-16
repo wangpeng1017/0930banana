@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { TRANSFORMATIONS } from './constants';
-import { editImage } from './services/geminiService';
+import { editImage, generateVideo } from './services/geminiService';
 import type { GeneratedContent, Transformation } from './types';
 import TransformationSelector from './components/TransformationSelector';
 import ResultDisplay from './components/ResultDisplay';
@@ -53,9 +53,11 @@ const App: React.FC = () => {
   const [maskDataUrl, setMaskDataUrl] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>('');
+  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
   const [activeTool, setActiveTool] = useState<ActiveTool>('none');
   const [history, setHistory] = useState<GeneratedContent[]>([]);
   const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState<boolean>(false);
+  const [activeCategory, setActiveCategory] = useState<Transformation | null>(null);
   
   useEffect(() => {
     try {
@@ -65,6 +67,20 @@ const App: React.FC = () => {
       console.error("Failed to save transformation order to localStorage", e);
     }
   }, [transformations]);
+  
+  // Cleanup blob URLs on unmount or when dependencies change
+  useEffect(() => {
+    return () => {
+        history.forEach(item => {
+            if (item.videoUrl) {
+                URL.revokeObjectURL(item.videoUrl);
+            }
+        });
+        if (generatedContent?.videoUrl) {
+            URL.revokeObjectURL(generatedContent.videoUrl);
+        }
+    };
+  }, [history, generatedContent]);
 
 
   const handleSelectTransformation = (transformation: Transformation) => {
@@ -106,12 +122,66 @@ const App: React.FC = () => {
     setSecondaryFile(null);
   };
 
-  const handleGenerate = useCallback(async () => {
+  const handleGenerateVideo = useCallback(async () => {
+    if (!selectedTransformation) return;
+
+    const promptToUse = customPrompt;
+    if (!promptToUse.trim()) {
+        setError(t('app.error.enterPrompt'));
+        return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setGeneratedContent(null);
+
+    try {
+        let imagePayload = null;
+        if (primaryImageUrl) {
+            const primaryMimeType = primaryImageUrl.split(';')[0].split(':')[1] ?? 'image/png';
+            const primaryBase64 = primaryImageUrl.split(',')[1];
+            imagePayload = { base64: primaryBase64, mimeType: primaryMimeType };
+        }
+
+        const videoDownloadUrl = await generateVideo(
+            promptToUse,
+            imagePayload,
+            aspectRatio,
+            (message) => setLoadingMessage(message) // Progress callback
+        );
+
+        setLoadingMessage(t('app.loading.videoFetching'));
+        const response = await fetch(videoDownloadUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download video file. Status: ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+
+        const result: GeneratedContent = {
+            imageUrl: null,
+            text: null,
+            videoUrl: objectUrl
+        };
+
+        setGeneratedContent(result);
+        setHistory(prev => [result, ...prev]);
+
+    } catch (err) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : t('app.error.unknown'));
+    } finally {
+        setIsLoading(false);
+        setLoadingMessage('');
+    }
+  }, [selectedTransformation, customPrompt, primaryImageUrl, aspectRatio, t]);
+
+  const handleGenerateImage = useCallback(async () => {
     if (!primaryImageUrl || !selectedTransformation) {
         setError(t('app.error.uploadAndSelect'));
         return;
     }
-    if (selectedTransformation.isMultiImage && !secondaryImageUrl) {
+    if (selectedTransformation.isMultiImage && !selectedTransformation.isSecondaryOptional && !secondaryImageUrl) {
         setError(t('app.error.uploadBoth'));
         return;
     }
@@ -133,58 +203,35 @@ const App: React.FC = () => {
         const maskBase64 = maskDataUrl ? maskDataUrl.split(',')[1] : null;
 
         if (selectedTransformation.isTwoStep) {
-            // Step 1: Generate line art (using only the primary image)
             setLoadingMessage(t('app.loading.step1'));
-            const stepOneResult = await editImage(
-                primaryBase64,
-                primaryMimeType,
-                promptToUse, // First prompt
-                null, // No mask for step 1
-                null  // No secondary image for step 1
-            );
+            const stepOneResult = await editImage(primaryBase64, primaryMimeType, promptToUse, null, null);
 
-            if (!stepOneResult.imageUrl) {
-                throw new Error("Step 1 (line art) failed to generate an image.");
-            }
+            if (!stepOneResult.imageUrl) throw new Error("Step 1 (line art) failed to generate an image.");
 
-            // Step 2: Color the line art using the palette
             setLoadingMessage(t('app.loading.step2'));
             const stepOneImageBase64 = stepOneResult.imageUrl.split(',')[1];
             const stepOneImageMimeType = stepOneResult.imageUrl.split(';')[0].split(':')[1] ?? 'image/png';
 
             let secondaryImagePayload = null;
-            if (selectedTransformation.isMultiImage && secondaryImageUrl && primaryImageUrl) {
-                // Load primary image to get its dimensions
+            if (secondaryImageUrl) {
                 const primaryImage = await loadImage(primaryImageUrl);
-                // Resize color palette to match primary image's aspect ratio
                 const resizedSecondaryImageUrl = await resizeImageToMatch(secondaryImageUrl, primaryImage);
-
                 const secondaryMimeType = resizedSecondaryImageUrl.split(';')[0].split(':')[1] ?? 'image/png';
                 const secondaryBase64 = resizedSecondaryImageUrl.split(',')[1];
                 secondaryImagePayload = { base64: secondaryBase64, mimeType: secondaryMimeType };
             }
 
-            const stepTwoResult = await editImage(
-                stepOneImageBase64,
-                stepOneImageMimeType,
-                selectedTransformation.stepTwoPrompt!, // Second prompt
-                null, // No mask for step 2
-                secondaryImagePayload // Use the RESIZED color palette here
-            );
+            const stepTwoResult = await editImage(stepOneImageBase64, stepOneImageMimeType, selectedTransformation.stepTwoPrompt!, null, secondaryImagePayload);
             
             if (stepTwoResult.imageUrl) {
                 stepTwoResult.imageUrl = await embedWatermark(stepTwoResult.imageUrl, "Nano Bananary｜ZHO");
             }
 
-            const finalResult = {
-                imageUrl: stepTwoResult.imageUrl,
-                text: stepTwoResult.text,
-                secondaryImageUrl: stepOneResult.imageUrl, // Store intermediate result
-            };
+            const finalResult = { ...stepTwoResult, secondaryImageUrl: stepOneResult.imageUrl };
             setGeneratedContent(finalResult);
             setHistory(prev => [finalResult, ...prev]);
 
-        } else { // Single-step generation
+        } else {
              let secondaryImagePayload = null;
             if (selectedTransformation.isMultiImage && secondaryImageUrl) {
                 const secondaryMimeType = secondaryImageUrl.split(';')[0].split(':')[1] ?? 'image/png';
@@ -192,17 +239,9 @@ const App: React.FC = () => {
                 secondaryImagePayload = { base64: secondaryBase64, mimeType: secondaryMimeType };
             }
             setLoadingMessage(t('app.loading.default'));
-            const result = await editImage(
-                primaryBase64, 
-                primaryMimeType, 
-                promptToUse,
-                maskBase64,
-                secondaryImagePayload
-            );
+            const result = await editImage(primaryBase64, primaryMimeType, promptToUse, maskBase64, secondaryImagePayload);
 
-            if (result.imageUrl) {
-                result.imageUrl = await embedWatermark(result.imageUrl, "Nano Bananary｜ZHO");
-            }
+            if (result.imageUrl) result.imageUrl = await embedWatermark(result.imageUrl, "Nano Bananary｜ZHO");
 
             setGeneratedContent(result);
             setHistory(prev => [result, ...prev]);
@@ -215,6 +254,14 @@ const App: React.FC = () => {
       setLoadingMessage('');
     }
   }, [primaryImageUrl, secondaryImageUrl, selectedTransformation, maskDataUrl, customPrompt, t]);
+  
+  const handleGenerate = useCallback(() => {
+    if (selectedTransformation?.isVideo) {
+      handleGenerateVideo();
+    } else {
+      handleGenerateImage();
+    }
+  }, [selectedTransformation, handleGenerateVideo, handleGenerateImage]);
 
 
   const handleUseImageAsInput = useCallback(async (imageUrl: string) => {
@@ -231,6 +278,7 @@ const App: React.FC = () => {
       setSecondaryFile(null);
       setSecondaryImageUrl(null);
       setSelectedTransformation(null); 
+      setActiveCategory(null);
     } catch (err) {
       console.error("Failed to use image as input:", err);
       setError(t('app.error.useAsInputFailed'));
@@ -244,10 +292,10 @@ const App: React.FC = () => {
       setIsHistoryPanelOpen(false);
   };
   
-  const handleDownloadFromHistory = (imageUrl: string, type: 'line-art' | 'final-result' | 'single-result') => {
-      const fileExtension = imageUrl.split(';')[0].split('/')[1] || 'png';
+  const handleDownloadFromHistory = (url: string, type: string) => {
+      const fileExtension = type.includes('video') ? 'mp4' : (url.split(';')[0].split('/')[1] || 'png');
       const filename = `${type}-${Date.now()}.${fileExtension}`;
-      downloadImage(imageUrl, filename);
+      downloadImage(url, filename);
   };
 
   const handleBackToSelection = () => {
@@ -266,7 +314,7 @@ const App: React.FC = () => {
     setMaskDataUrl(null);
     setCustomPrompt('');
     setActiveTool('none');
-    // Don't clear history on reset
+    setActiveCategory(null);
   };
 
   const handleOpenPreview = (url: string) => setPreviewImageUrl(url);
@@ -277,9 +325,111 @@ const App: React.FC = () => {
   };
   
   const isCustomPromptEmpty = selectedTransformation?.prompt === 'CUSTOM' && !customPrompt.trim();
-  const isSingleImageReady = !selectedTransformation?.isMultiImage && primaryImageUrl;
-  const isMultiImageReady = selectedTransformation?.isMultiImage && primaryImageUrl && secondaryImageUrl;
-  const isGenerateDisabled = isLoading || isCustomPromptEmpty || (!isSingleImageReady && !isMultiImageReady);
+  
+  let isGenerateDisabled = true;
+  if (selectedTransformation) {
+    if (selectedTransformation.isVideo) {
+        isGenerateDisabled = isLoading || !customPrompt.trim();
+    } else {
+        let imagesReady = false;
+        if (selectedTransformation.isMultiImage) {
+            if (selectedTransformation.isSecondaryOptional) {
+                imagesReady = !!primaryImageUrl;
+            } else {
+                imagesReady = !!primaryImageUrl && !!secondaryImageUrl;
+            }
+        } else {
+            imagesReady = !!primaryImageUrl;
+        }
+        isGenerateDisabled = isLoading || isCustomPromptEmpty || !imagesReady;
+    }
+  }
+
+  const renderInputUI = () => {
+    if (!selectedTransformation) return null;
+
+    if (selectedTransformation.isVideo) {
+      return (
+        <>
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            placeholder={t('transformations.video.promptPlaceholder')}
+            rows={4}
+            className="w-full mt-2 p-3 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] transition-colors placeholder-[var(--text-tertiary)]"
+          />
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">{t('transformations.video.aspectRatio')}</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {(['16:9', '9:16'] as const).map(ratio => (
+                <button
+                  key={ratio}
+                  onClick={() => setAspectRatio(ratio)}
+                  className={`py-2 px-3 text-sm font-semibold rounded-md transition-colors duration-200 ${
+                    aspectRatio === ratio ? 'bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] text-[var(--text-on-accent)]' : 'bg-[rgba(107,114,128,0.2)] hover:bg-[rgba(107,114,128,0.4)]'
+                  }`}
+                >
+                  {t(ratio === '16:9' ? 'transformations.video.landscape' : 'transformations.video.portrait')}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4">
+             <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">{t('transformations.effects.customPrompt.uploader2Title')}</h3>
+            <ImageEditorCanvas
+                onImageSelect={handlePrimaryImageSelect}
+                initialImageUrl={primaryImageUrl}
+                onMaskChange={() => {}}
+                onClearImage={handleClearPrimaryImage}
+                isMaskToolActive={false}
+            />
+          </div>
+        </>
+      );
+    }
+
+    if (selectedTransformation.isMultiImage) {
+      return (
+        <MultiImageUploader
+          onPrimarySelect={handlePrimaryImageSelect}
+          onSecondarySelect={handleSecondaryImageSelect}
+          primaryImageUrl={primaryImageUrl}
+          secondaryImageUrl={secondaryImageUrl}
+          onClearPrimary={handleClearPrimaryImage}
+          onClearSecondary={handleClearSecondaryImage}
+          primaryTitle={selectedTransformation.primaryUploaderTitle ? t(selectedTransformation.primaryUploaderTitle) : undefined}
+          primaryDescription={selectedTransformation.primaryUploaderDescription ? t(selectedTransformation.primaryUploaderDescription) : undefined}
+          secondaryTitle={selectedTransformation.secondaryUploaderTitle ? t(selectedTransformation.secondaryUploaderTitle) : undefined}
+          secondaryDescription={selectedTransformation.secondaryUploaderDescription ? t(selectedTransformation.secondaryUploaderDescription) : undefined}
+        />
+      );
+    }
+
+    return (
+      <>
+        <ImageEditorCanvas
+          onImageSelect={handlePrimaryImageSelect}
+          initialImageUrl={primaryImageUrl}
+          onMaskChange={setMaskDataUrl}
+          onClearImage={handleClearPrimaryImage}
+          isMaskToolActive={activeTool === 'mask'}
+        />
+        {primaryImageUrl && (
+          <div className="mt-4">
+            <button
+              onClick={toggleMaskTool}
+              className={`w-full flex items-center justify-center gap-2 py-2 px-3 text-sm font-semibold rounded-md transition-colors duration-200 ${
+                activeTool === 'mask' ? 'bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] text-[var(--text-on-accent)]' : 'bg-[rgba(107,114,128,0.2)] hover:bg-[rgba(107,114,128,0.4)]'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg>
+              <span>{t('imageEditor.drawMask')}</span>
+            </button>
+          </div>
+        )}
+      </>
+    );
+  };
 
 
   return (
@@ -316,6 +466,8 @@ const App: React.FC = () => {
             onSelect={handleSelectTransformation} 
             hasPreviousResult={!!primaryImageUrl}
             onOrderChange={setTransformations}
+            activeCategory={activeCategory}
+            setActiveCategory={setActiveCategory}
           />
         ) : (
           <div className="container mx-auto p-4 md:p-8 animate-fade-in">
@@ -340,55 +492,24 @@ const App: React.FC = () => {
                       <span className="text-3xl">{selectedTransformation.emoji}</span>
                       {t(selectedTransformation.titleKey)}
                     </h2>
-                    {selectedTransformation.prompt === 'CUSTOM' ? (
-                        <textarea
-                            value={customPrompt}
-                            onChange={(e) => setCustomPrompt(e.target.value)}
-                            placeholder="e.g., 'make the sky a vibrant sunset' or 'add a small red boat on the water'"
-                            rows={3}
-                            className="w-full mt-2 p-3 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] transition-colors placeholder-[var(--text-tertiary)]"
-                        />
-                    ) : (
+                    {selectedTransformation.prompt !== 'CUSTOM' ? (
                        <p className="text-[var(--text-secondary)]">{t(selectedTransformation.descriptionKey)}</p>
+                    ) : (
+                      !selectedTransformation.isVideo && <p className="text-[var(--text-secondary)]">{t(selectedTransformation.descriptionKey)}</p>
                     )}
                   </div>
                   
-                  {selectedTransformation.isMultiImage ? (
-                    <MultiImageUploader
-                      onPrimarySelect={handlePrimaryImageSelect}
-                      onSecondarySelect={handleSecondaryImageSelect}
-                      primaryImageUrl={primaryImageUrl}
-                      secondaryImageUrl={secondaryImageUrl}
-                      onClearPrimary={handleClearPrimaryImage}
-                      onClearSecondary={handleClearSecondaryImage}
-                      primaryTitle={selectedTransformation.primaryUploaderTitle ? t(selectedTransformation.primaryUploaderTitle) : undefined}
-                      primaryDescription={selectedTransformation.primaryUploaderDescription ? t(selectedTransformation.primaryUploaderDescription) : undefined}
-                      secondaryTitle={selectedTransformation.secondaryUploaderTitle ? t(selectedTransformation.secondaryUploaderTitle) : undefined}
-                      secondaryDescription={selectedTransformation.secondaryUploaderDescription ? t(selectedTransformation.secondaryUploaderDescription) : undefined}
-                    />
-                  ) : (
-                    <ImageEditorCanvas
-                      onImageSelect={handlePrimaryImageSelect}
-                      initialImageUrl={primaryImageUrl}
-                      onMaskChange={setMaskDataUrl}
-                      onClearImage={handleClearPrimaryImage}
-                      isMaskToolActive={activeTool === 'mask'}
+                  {selectedTransformation.prompt === 'CUSTOM' && !selectedTransformation.isVideo && (
+                    <textarea
+                        value={customPrompt}
+                        onChange={(e) => setCustomPrompt(e.target.value)}
+                        placeholder="e.g., 'make the sky a vibrant sunset' or 'add a small red boat on the water'"
+                        rows={3}
+                        className="w-full -mt-2 mb-4 p-3 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] transition-colors placeholder-[var(--text-tertiary)]"
                     />
                   )}
-
-                  {primaryImageUrl && !selectedTransformation.isMultiImage && (
-                    <div className="mt-4">
-                        <button
-                            onClick={toggleMaskTool}
-                            className={`w-full flex items-center justify-center gap-2 py-2 px-3 text-sm font-semibold rounded-md transition-colors duration-200 ${
-                                activeTool === 'mask' ? 'bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] text-[var(--text-on-accent)]' : 'bg-[rgba(107,114,128,0.2)] hover:bg-[rgba(107,114,128,0.4)]'
-                            }`}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg>
-                            <span>{t('imageEditor.drawMask')}</span>
-                        </button>
-                    </div>
-                  )}
+                  
+                  {renderInputUI()}
                   
                    <button
                     onClick={handleGenerate}

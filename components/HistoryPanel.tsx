@@ -7,10 +7,10 @@ interface HistoryPanelProps {
   onClose: () => void;
   history: GeneratedContent[];
   onUseImage: (imageUrl: string) => void;
-  onDownload: (imageUrl: string, type: 'line-art' | 'final-result' | 'single-result') => void;
+  onDownload: (url: string, type: string) => void;
 }
 
-const HistoryItem: React.FC<{ item: GeneratedContent; onUseImage: (url: string) => void; onDownload: (url: string, type: 'line-art' | 'final-result' | 'single-result') => void; }> = ({ item, onUseImage, onDownload }) => {
+const HistoryItem: React.FC<{ item: GeneratedContent; onUseImage: (url: string) => void; onDownload: (url: string, type: string) => void; }> = ({ item, onUseImage, onDownload }) => {
     const { t } = useTranslation();
     const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode; isPrimary?: boolean; }> = ({ onClick, children, isPrimary }) => (
         <button 
@@ -25,12 +25,26 @@ const HistoryItem: React.FC<{ item: GeneratedContent; onUseImage: (url: string) 
         </button>
     );
 
+    if (item.videoUrl) {
+      return (
+        <div className="bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border-primary)]">
+          <div className="flex flex-col gap-3">
+            <video src={item.videoUrl} controls className="rounded-md w-full object-contain bg-[var(--bg-primary)]" />
+            <div className="grid grid-cols-1 gap-2 text-sm">
+              <ActionButton onClick={() => onDownload(item.videoUrl!, 'video-result')} isPrimary>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                {t('resultDisplay.actions.download')}
+              </ActionButton>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
         <div className="bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border-primary)]">
-            {/* Two-step result */}
-            {item.secondaryImageUrl && item.imageUrl && (
+            {item.secondaryImageUrl && item.imageUrl ? (
                 <div className="grid grid-cols-2 gap-3">
-                    {/* Line Art */}
                     <div className="flex flex-col gap-2">
                         <img src={item.secondaryImageUrl} className="rounded-md aspect-square object-contain bg-[var(--bg-primary)]" alt="Line Art Result" />
                         <div className="text-xs text-center text-[var(--text-secondary)] mb-1">{t('history.lineArt')}</div>
@@ -45,7 +59,6 @@ const HistoryItem: React.FC<{ item: GeneratedContent; onUseImage: (url: string) 
                             </ActionButton>
                         </div>
                     </div>
-                    {/* Final Result */}
                     <div className="flex flex-col gap-2">
                         <img src={item.imageUrl} className="rounded-md aspect-square object-contain bg-[var(--bg-primary)]" alt="Final Result" />
                         <div className="text-xs text-center text-[var(--text-secondary)] mb-1">{t('history.finalResult')}</div>
@@ -61,9 +74,7 @@ const HistoryItem: React.FC<{ item: GeneratedContent; onUseImage: (url: string) 
                         </div>
                     </div>
                 </div>
-            )}
-            {/* Single result */}
-            {!item.secondaryImageUrl && item.imageUrl && (
+            ) : item.imageUrl && (
                 <div className="flex flex-col gap-3">
                     <img src={item.imageUrl} className="rounded-md w-full object-contain bg-[var(--bg-primary)]" alt="Generated Result" />
                     <div className="grid grid-cols-2 gap-2 text-sm">
@@ -86,12 +97,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, history, o
   const { t } = useTranslation();
   return (
     <div className={`fixed inset-0 z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-      {/* Overlay */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       
-      {/* Panel */}
       <div className={`absolute top-0 right-0 h-full w-full max-w-md bg-[var(--bg-card)] border-l border-[var(--border-primary)] shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-        {/* Header */}
         <div className="p-4 border-b border-[var(--border-primary)] flex justify-between items-center flex-shrink-0">
           <h2 className="text-xl font-semibold text-[var(--accent-primary)]">{t('history.title')}</h2>
           <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[rgba(107,114,128,0.2)] hover:text-[var(--text-primary)] transition-colors">
@@ -101,7 +109,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, history, o
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-grow overflow-y-auto p-4">
           {history.length === 0 ? (
             <div className="text-center text-[var(--text-tertiary)] pt-10 flex flex-col items-center gap-4">
