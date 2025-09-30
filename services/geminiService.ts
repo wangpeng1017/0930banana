@@ -2,11 +2,86 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { GeneratedContent } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable is not set.");
+// API Key 轮询管理类
+class ApiKeyManager {
+  private apiKeys: string[];
+  private currentIndex: number = 0;
+  private failures: Map<string, number> = new Map();
+  private maxRetries: number = 3;
+
+  constructor() {
+    // 收集所有可用的 API Keys
+    this.apiKeys = [];
+    for (let i = 1; i <= 19; i++) {
+      const key = process.env[`GEMINI_API_KEY_${i}`] || (i === 1 ? process.env.API_KEY : null);
+      if (key) {
+        this.apiKeys.push(key);
+      }
+    }
+
+    if (this.apiKeys.length === 0) {
+      throw new Error("至少需要配置一个 API Key. 请设置 GEMINI_API_KEY_1 或 API_KEY 环境变量.");
+    }
+
+    console.log(`🔑 已加载 ${this.apiKeys.length} 个 API Key`);
+  }
+
+  // 获取当前 API Key
+  getCurrentApiKey(): string {
+    return this.apiKeys[this.currentIndex];
+  }
+
+  // 轮换到下一个 API Key
+  rotateToNext(): void {
+    this.currentIndex = (this.currentIndex + 1) % this.apiKeys.length;
+    console.log(`🔄 切换到 API Key ${this.currentIndex + 1}/${this.apiKeys.length}`);
+  }
+
+  // 标记当前 API Key 失败
+  markCurrentAsFailed(): void {
+    const currentKey = this.getCurrentApiKey();
+    const failures = (this.failures.get(currentKey) || 0) + 1;
+    this.failures.set(currentKey, failures);
+    
+    if (failures >= this.maxRetries) {
+      console.warn(`⚠️  API Key ${this.currentIndex + 1} 已达到最大重试次数，暂时跳过`);
+    }
+  }
+
+  // 检查当前 API Key 是否可用
+  isCurrentKeyAvailable(): boolean {
+    const currentKey = this.getCurrentApiKey();
+    return (this.failures.get(currentKey) || 0) < this.maxRetries;
+  }
+
+  // 获取可用的 API Key（会自动轮换到可用的）
+  getAvailableApiKey(): string | null {
+    const startIndex = this.currentIndex;
+    
+    do {
+      if (this.isCurrentKeyAvailable()) {
+        return this.getCurrentApiKey();
+      }
+      this.rotateToNext();
+    } while (this.currentIndex !== startIndex);
+    
+    // 所有 API Key 都不可用，重置失败计数
+    this.failures.clear();
+    console.log('🔄 所有 API Key 失败计数已重置');
+    return this.getCurrentApiKey();
+  }
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKeyManager = new ApiKeyManager();
+
+// 创建带有错误重试的 AI 实例获取函数
+function getAiInstance(): GoogleGenAI {
+  const apiKey = apiKeyManager.getAvailableApiKey();
+  if (!apiKey) {
+    throw new Error("没有可用的 API Key");
+  }
+  return new GoogleGenAI({ apiKey });
+}
 
 export async function editImage(
     base64ImageData: string, 
@@ -47,13 +122,36 @@ export async function editImage(
 
     parts.push({ text: fullPrompt });
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image-preview',
-      contents: { parts },
-      config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
-      },
-    });
+    // 获取当前可用 AI 实例
+    let ai = getAiInstance();
+
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image-preview',
+        contents: { parts },
+        config: {
+          responseModalities: [Modality.IMAGE, Modality.TEXT],
+        },
+      });
+    } catch (err) {
+      // 当出现配额/速率限制等错误时，尝试轮换 API Key 重试一次
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429') || msg.includes('rate') || msg.includes('quota')) {
+        apiKeyManager.markCurrentAsFailed();
+        apiKeyManager.rotateToNext();
+        ai = getAiInstance();
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image-preview',
+          contents: { parts },
+          config: {
+            responseModalities: [Modality.IMAGE, Modality.TEXT],
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
 
     const result: GeneratedContent = { imageUrl: null, text: null };
     const responseParts = response.candidates?.[0]?.content?.parts;
@@ -137,7 +235,23 @@ export async function generateVideo(
             })
         };
 
-        let operation = await ai.models.generateVideos(request);
+        // 获取当前可用 AI 实例
+        let ai = getAiInstance();
+
+        let operation;
+        try {
+            operation = await ai.models.generateVideos(request);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429') || msg.includes('rate') || msg.includes('quota')) {
+                apiKeyManager.markCurrentAsFailed();
+                apiKeyManager.rotateToNext();
+                ai = getAiInstance();
+                operation = await ai.models.generateVideos(request);
+            } else {
+                throw err;
+            }
+        }
         
         onProgress("Polling for results, this may take a few minutes...");
 
@@ -156,7 +270,9 @@ export async function generateVideo(
             throw new Error("Video generation completed, but no download link was found.");
         }
 
-        return `${downloadLink}&key=${process.env.API_KEY}`;
+        // 使用当前可用的 API Key 拼接下载链接
+        const currentKey = apiKeyManager.getAvailableApiKey();
+        return `${downloadLink}&key=${currentKey}`;
 
     } catch (error) {
         console.error("Error calling Video Generation API:", error);
