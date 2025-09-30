@@ -6,7 +6,17 @@ export default defineConfig(({ mode }) => {
     // 本地开发时，从 .env 文件加载
     const env = loadEnv(mode, '.', '');
     
-    // 合并本地和系统环境变量
+    // 调试：输出 process.env 中的 GEMINI_API_KEY 相关变量
+    console.log('\n=== Vite 构建时环境变量检查 ===');
+    console.log('Mode:', mode);
+    console.log('\nGEMINI_API_KEY 变量在 process.env 中：');
+    for (let i = 1; i <= 19; i++) {
+        const keyName = i === 1 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY_${i}`;
+        const exists = !!process.env[keyName];
+        console.log(`  ${keyName}: ${exists ? '✅ 存在' : '❌ 不存在'}`);
+    }
+    
+    // 优先使用 process.env，其次是 loadEnv
     const allEnv = { ...env, ...process.env };
     
     // 构建环境变量定义
