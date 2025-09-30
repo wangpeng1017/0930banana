@@ -48,7 +48,6 @@ class ApiKeyManager {
     console.log(`🔑 成功加载 ${this.apiKeys.length} 个 API Key`);
     console.log(`🎯 主要策略: 使用 ${this.apiKeys.length} 个 Key 进行轮询负载均衡`);
   }
-  }
 
   // 获取当前 API Key
   getCurrentApiKey(): string {
