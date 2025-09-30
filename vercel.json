@@ -3,6 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "installCommand": "npm install",
+  "_comment": "Updated 2025-09-30 to include all 19 API Keys",
   "env": {
     "GEMINI_API_KEY": "$GEMINI_API_KEY",
     "GEMINI_API_KEY_2": "$GEMINI_API_KEY_2",
