@@ -3,6 +3,7 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import type { GeneratedContent } from '../types';
 
 // API Key 轮询管理类
+// Version: 2025-09-30-fix (Force rebuild with all 19 keys)
 class ApiKeyManager {
   private apiKeys: string[];
   private currentIndex: number = 0;
