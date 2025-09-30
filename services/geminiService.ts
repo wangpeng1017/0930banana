@@ -160,6 +160,14 @@ export async function editImage(
     } catch (err) {
       // 当出现配额/速率限制等错误时，尝试轮换 API Key 重试一次
       const msg = err instanceof Error ? err.message : String(err);
+
+      // 如果返回体里包含“limit: 0”，说明当前项目对该模型没有免费配额（必须开通计费）。
+      if (msg.includes('limit: 0')) {
+        throw new Error(
+          'Your Google AI project has 0 free-tier quota for this model. Please enable billing for the project or switch to a model that is available on the free tier.'
+        );
+      }
+
       if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429') || msg.includes('rate') || msg.includes('quota')) {
         apiKeyManager.markCurrentAsFailed();
         apiKeyManager.rotateToNext();
@@ -307,6 +315,10 @@ export async function generateVideo(
                     errorMessage = parsedError.error.message;
                 }
             } catch (e) {}
+
+            if (errorMessage.includes('limit: 0')) {
+                errorMessage = 'Your Google AI project has 0 free-tier quota for this model (video generation). Please enable billing for the project.';
+            }
             throw new Error(errorMessage);
         }
         throw new Error("An unknown error occurred during video generation.");
