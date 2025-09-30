@@ -12,15 +12,22 @@ class ApiKeyManager {
   constructor() {
     // 收集所有可用的 API Keys
     this.apiKeys = [];
-    for (let i = 1; i <= 19; i++) {
-      const key = process.env[`GEMINI_API_KEY_${i}`] || (i === 1 ? process.env.API_KEY : null);
+    // 首先尝试主要的 GEMINI_API_KEY
+    const mainKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (mainKey) {
+      this.apiKeys.push(mainKey);
+    }
+    
+    // 然后加载其他编号的 API Keys (2-19)
+    for (let i = 2; i <= 19; i++) {
+      const key = process.env[`GEMINI_API_KEY_${i}`];
       if (key) {
         this.apiKeys.push(key);
       }
     }
 
     if (this.apiKeys.length === 0) {
-      throw new Error("至少需要配置一个 API Key. 请设置 GEMINI_API_KEY_1 或 API_KEY 环境变量.");
+      throw new Error("至少需要配置一个 API Key. 请设置 GEMINI_API_KEY 或 API_KEY 环境变量.");
     }
 
     console.log(`🔑 已加载 ${this.apiKeys.length} 个 API Key`);

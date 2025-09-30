@@ -4,10 +4,10 @@
 
 将以下环境变量复制到 Vercel 项目设置中：
 
-### 变量名和值（共 19 个 API Key）
+### 变量名和值（主要 Key + 18 个备用 Key）
 
 ```
-GEMINI_API_KEY_1=AIzaSyDTWiI8H7P2cz9xvvV8nxLDURp5z7L0wj0
+GEMINI_API_KEY=AIzaSyDTWiI8H7P2cz9xvvV8nxLDURp5z7L0wj0
 GEMINI_API_KEY_2=AIzaSyAIqU843chmqWkjakXENo54f2D5ilFvbyY
 GEMINI_API_KEY_3=AIzaSyC16ILL4rIHHUue9H8hvDA0qxqmaIdp9cs
 GEMINI_API_KEY_4=AIzaSyAlskhPP7IC8upa2fHUJ2i2gVM5N3Eu3CY
@@ -42,7 +42,7 @@ GEMINI_API_KEY_19=AIzaSyAYrAc8otSeBuUTLzuT_ZXl-vWHpe56Gfc
 4. **添加环境变量**
    - 点击 "Add New" 按钮
    - 依次添加上述 19 个环境变量
-   - **变量名**: 输入如 `GEMINI_API_KEY_1`
+   - **变量名**: 输入如 `GEMINI_API_KEY`
    - **值**: 输入对应的 API Key
    - **环境**: 选择 Production, Preview, Development（全选）
 
