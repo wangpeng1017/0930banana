@@ -13,44 +13,41 @@ class ApiKeyManager {
   constructor() {
     // 收集所有可用的 API Keys
     this.apiKeys = [];
-    
-    // 调试：记录环境变量检查过程
-    console.log('🔍 检查环境变量...');
-    
-    // 首先尝试主要的 GEMINI_API_KEY
-    const mainKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (mainKey) {
-      this.apiKeys.push(mainKey);
-      console.log('✅ 找到主要 API Key: GEMINI_API_KEY');
-    } else {
-      console.log('❌ 未找到主要 API Key (GEMINI_API_KEY 或 API_KEY)');
-    }
-    
-    // 然后加载其他编号的 API Keys (2-19)
-    let foundCount = 0;
-    for (let i = 2; i <= 19; i++) {
-      const keyName = `GEMINI_API_KEY_${i}`;
-      const key = process.env[keyName];
-      if (key) {
-        this.apiKeys.push(key);
-        foundCount++;
-        console.log(`✅ 找到备用 API Key: ${keyName}`);
-      }
-    }
-    console.log(`🔍 找到 ${foundCount} 个备用 API Key (GEMINI_API_KEY_2 到 GEMINI_API_KEY_19)`);
+
+    // 关键修复：显式枚举所有环境变量，避免在浏览器端动态访问 process.env 导致替换失败
+    const allKeys = [
+      // 主要 Key（支持 API_KEY 兼容）
+      process.env.GEMINI_API_KEY || process.env.API_KEY,
+      // 备用 Key 2 - 19
+      process.env.GEMINI_API_KEY_2,
+      process.env.GEMINI_API_KEY_3,
+      process.env.GEMINI_API_KEY_4,
+      process.env.GEMINI_API_KEY_5,
+      process.env.GEMINI_API_KEY_6,
+      process.env.GEMINI_API_KEY_7,
+      process.env.GEMINI_API_KEY_8,
+      process.env.GEMINI_API_KEY_9,
+      process.env.GEMINI_API_KEY_10,
+      process.env.GEMINI_API_KEY_11,
+      process.env.GEMINI_API_KEY_12,
+      process.env.GEMINI_API_KEY_13,
+      process.env.GEMINI_API_KEY_14,
+      process.env.GEMINI_API_KEY_15,
+      process.env.GEMINI_API_KEY_16,
+      process.env.GEMINI_API_KEY_17,
+      process.env.GEMINI_API_KEY_18,
+      process.env.GEMINI_API_KEY_19,
+    ].filter((k): k is string => Boolean(k));
+
+    this.apiKeys.push(...allKeys);
 
     if (this.apiKeys.length === 0) {
-      console.error('❌ 环境变量检查结果:');
-      console.error('   - GEMINI_API_KEY:', !!process.env.GEMINI_API_KEY);
-      console.error('   - API_KEY:', !!process.env.API_KEY);
-      for (let i = 2; i <= 5; i++) {
-        console.error(`   - GEMINI_API_KEY_${i}:`, !!process.env[`GEMINI_API_KEY_${i}`]);
-      }
       throw new Error("至少需要配置一个 API Key. 请设置 GEMINI_API_KEY 或 API_KEY 环境变量.");
     }
 
     console.log(`🔑 成功加载 ${this.apiKeys.length} 个 API Key`);
     console.log(`🎯 主要策略: 使用 ${this.apiKeys.length} 个 Key 进行轮询负载均衡`);
+  }
   }
 
   // 获取当前 API Key
