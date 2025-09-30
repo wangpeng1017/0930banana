@@ -29,10 +29,15 @@ export default defineConfig(({ mode }) => {
     }
     
     // 支持多个 API Key（GEMINI_API_KEY_2 到 GEMINI_API_KEY_19）
+    console.log('\n正在处理备用 API Keys...');
     for (let i = 2; i <= 19; i++) {
         const keyName = `GEMINI_API_KEY_${i}`;
-        if (allEnv[keyName]) {
-            envDefines[`process.env.${keyName}`] = JSON.stringify(allEnv[keyName]);
+        const value = allEnv[keyName];
+        if (value) {
+            envDefines[`process.env.${keyName}`] = JSON.stringify(value);
+            console.log(`  ✅ 已添加 ${keyName} 到 define 配置`);
+        } else {
+            console.log(`  ❌ ${keyName} 为空或不存在，值:`, value);
         }
     }
     
